@@ -214,7 +214,8 @@ stepwise_custom <- function(data, criterion = "Cp") {
   TSS <- sum((data$Y - mean(data$Y))^2)
   # Score a candidate model
   evaluate <- function(vars) {
-    f <- reformulate(vars, response = "Y")
+    # reformulate() needs at least one term; "1" gives the intercept-only model
+    f <- reformulate(if (length(vars) > 0) vars else "1", response = "Y")
     fit <- lm(f, data = data)
     RSS <- sum(resid(fit)^2)
     p <- length(coef(fit)) # Includes intercept
@@ -250,7 +251,8 @@ stepwise_custom <- function(data, criterion = "Cp") {
     selected <- candidates[[best]]
     current_score <- scores[best]
   }
-  final_model <- lm(reformulate(selected, response = "Y"), data = data)
+  final_model <- lm(reformulate(if (length(selected) > 0) selected else "1",
+                                response = "Y"), data = data)
   list(model = final_model, selected = selected,
        criterion_value = current_score)
 }
