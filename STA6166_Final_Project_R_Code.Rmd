@@ -1,0 +1,418 @@
+---
+title: "STA6166 Statistical Methods I — Final Project R Code"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This document contains **only Questions 1–4, 6, 10, and 11**, corresponding to the supplied script. Question 6 demonstrates 12 alternatives; the project requires students to select only one method and one criterion.
+
+# Setup
+
+Install packages once in the R console if needed: `install.packages(c("lmtest", "leaps", "glmnet"))`. Installation is not repeated during knitting.
+
+```{r setup}
+setwd("C:/Users/n01654025/Downloads/STA6166/Final_project")
+# Import the tab-delimited data as a data frame
+data <- read.delim("STA6166_final_project_data.tsv", header = TRUE, sep = "\t")
+library(lmtest)
+library(leaps)
+library(glmnet)
+```
+
+# Question 1: Full Multiple Linear Regression
+
+Fit all 15 predictors simultaneously. `summary()` displays the coefficient estimates, standard errors, t-statistics, p-values, and R-squared statistics.
+
+```{r q1}
+# Fit the full regression model
+full_model <- lm(Y ~ ., data = data)
+# Display regression results
+summary(full_model)
+```
+
+# Question 2: Breusch–Pagan Test
+
+This test assesses constant conditional error variance. The null is homoscedasticity; a small p-value suggests heteroscedasticity. Extract the statistic, p-value, and degrees of freedom.
+
+```{r q2}
+# Refit the full model, as in the original script
+full_model <- lm(Y ~ ., data = data)
+# Perform the Breusch-Pagan test
+bp_result <- bptest(full_model)
+print(bp_result)
+# Extract test statistic, p-value, and degrees of freedom
+bp_result$statistic
+bp_result$p.value
+bp_result$parameter
+```
+
+# Question 3: Shapiro–Wilk Normality Diagnostic
+
+Apply Shapiro–Wilk to the OLS residuals. This is a descriptive diagnostic: residuals are generally dependent and have unequal variances even when the underlying regression errors are normal, so the standard p-value is not an exact test of error normality.
+
+```{r q3}
+full_model <- lm(Y ~ ., data = data)
+# Extract OLS residuals
+res <- residuals(full_model)
+# Perform Shapiro-Wilk test
+shapiro_result <- shapiro.test(res)
+print(shapiro_result)
+# Extract test statistic and p-value
+shapiro_result$statistic
+shapiro_result$p.value
+```
+
+# Question 4: Regression Diagnostic Plots
+
+The residuals-versus-fitted plot helps assess constant variance and systematic patterns. The Q–Q plot helps assess departures from normality.
+
+```{r q4}
+full_model <- lm(Y ~ ., data = data)
+# Display two plots side by side
+par(mfrow = c(1, 2))
+# (a) Residuals versus fitted values
+plot(full_model, which = 1)
+# (b) Normal Q-Q plot
+plot(full_model, which = 2)
+# Restore plotting layout
+par(mfrow = c(1, 1))
+```
+
+# Question 6: Classical Model Selection
+
+AIC, BIC, and Mallows' $C_p$ are **minimized**; adjusted $R^2$ is **maximized**. The `step()` function supports all three directions for AIC/BIC. `regsubsets()` supports forward and backward searches for $C_p$ and adjusted $R^2$. A custom greedy bidirectional function is defined in 6.9 and reused in 6.12.
+
+## Shared setup
+
+```{r q6-setup}
+full_model <- lm(Y ~ ., data = data)
+null_model <- lm(Y ~ 1, data = data)
+N <- nrow(data)
+```
+
+## 6.1 Forward — AIC
+
+Start with the intercept-only model and add variables. `k = 2` applies the AIC penalty. Report the selected formula and AIC value.
+
+```{r q6-1}
+forward_AIC <- step(null_model,
+  scope = list(lower = formula(null_model), upper = formula(full_model)),
+  direction = "forward",
+  k = 2, trace = 0)
+summary(forward_AIC)
+formula(forward_AIC)
+AIC(forward_AIC)
+```
+
+## 6.2 Backward — AIC
+
+Start with all variables and remove variables. `k = 2` applies the AIC penalty. Report the selected formula and AIC value.
+
+```{r q6-2}
+backward_AIC <- step(full_model, direction = "backward", k = 2, trace = 0)
+summary(backward_AIC)
+formula(backward_AIC)
+AIC(backward_AIC)
+```
+
+## 6.3 Bidirectional stepwise — AIC
+
+Start with the intercept-only model and allow additions or removals. `k = 2` applies the AIC penalty. Report the selected formula and AIC value.
+
+```{r q6-3}
+stepwise_AIC <- step(null_model,
+  scope = list(lower = formula(null_model), upper = formula(full_model)),
+  direction = "both",
+  k = 2, trace = 0)
+summary(stepwise_AIC)
+formula(stepwise_AIC)
+AIC(stepwise_AIC)
+```
+
+## 6.4 Forward — BIC
+
+Start with the intercept-only model and add variables. `k = log(N)` applies the BIC penalty. Report the selected formula and BIC value.
+
+```{r q6-4}
+forward_BIC <- step(null_model,
+  scope = list(lower = formula(null_model), upper = formula(full_model)),
+  direction = "forward",
+  k = log(N), trace = 0)
+summary(forward_BIC)
+formula(forward_BIC)
+BIC(forward_BIC)
+```
+
+## 6.5 Backward — BIC
+
+Start with all variables and remove variables. `k = log(N)` applies the BIC penalty. Report the selected formula and BIC value.
+
+```{r q6-5}
+backward_BIC <- step(full_model, direction = "backward", k = log(N), trace = 0)
+summary(backward_BIC)
+formula(backward_BIC)
+BIC(backward_BIC)
+```
+
+## 6.6 Bidirectional stepwise — BIC
+
+Start with the intercept-only model and allow additions or removals. `k = log(N)` applies the BIC penalty. Report the selected formula and BIC value.
+
+```{r q6-6}
+stepwise_BIC <- step(null_model,
+  scope = list(lower = formula(null_model), upper = formula(full_model)),
+  direction = "both",
+  k = log(N), trace = 0)
+summary(stepwise_BIC)
+formula(stepwise_BIC)
+BIC(stepwise_BIC)
+```
+
+## 6.7 Forward — Mallows' $C_p$
+
+`regsubsets()` builds a forward search path. `which.min()` finds the model size with minimum $C_p$ along that path.
+
+```{r q6-7}
+forward_Cp <- regsubsets(Y ~ ., data = data, nvmax = 15, method = "forward")
+results <- summary(forward_Cp)
+# Select the model with minimum Cp
+best_size <- which.min(results$cp)
+# Selected coefficients, Cp, and predictor names
+coef(forward_Cp, id = best_size)
+results$cp[best_size]
+names(coef(forward_Cp, id = best_size))[-1]
+```
+
+## 6.8 Backward — Mallows' $C_p$
+
+`regsubsets()` builds a backward search path. `which.min()` finds the model size with minimum $C_p$ along that path.
+
+```{r q6-8}
+backward_Cp <- regsubsets(Y ~ ., data = data, nvmax = 15, method = "backward")
+results <- summary(backward_Cp)
+# Select the model with minimum Cp
+best_size <- which.min(results$cp)
+# Selected coefficients, Cp, and predictor names
+coef(backward_Cp, id = best_size)
+results$cp[best_size]
+names(coef(backward_Cp, id = best_size))[-1]
+```
+
+## 6.9 Bidirectional stepwise — Mallows' $C_p$
+
+The following original custom function evaluates one-predictor additions and removals, moving to the best improving neighbor. It stops at a local optimum and does not guarantee the globally best subset. For $C_p$, the full-model residual variance is used as the common reference.
+
+```{r q6-custom-function}
+stepwise_custom <- function(data, criterion = "Cp") {
+  predictors <- setdiff(names(data), "Y")
+  N <- nrow(data)
+  # Full model for estimating residual variance
+  full <- lm(Y ~ ., data = data)
+  sigma2_full <- sum(resid(full)^2) / df.residual(full)
+  TSS <- sum((data$Y - mean(data$Y))^2)
+  # Score a candidate model
+  evaluate <- function(vars) {
+    f <- reformulate(vars, response = "Y")
+    fit <- lm(f, data = data)
+    RSS <- sum(resid(fit)^2)
+    p <- length(coef(fit)) # Includes intercept
+    if (criterion == "Cp") {
+      score <- RSS / sigma2_full - N + 2 * p
+    } else if (criterion == "adjR2") {
+      score <- 1 - (RSS / (N - p)) / (TSS / (N - 1))
+    } else {
+      stop("Criterion must be Cp or adjR2")
+    }
+    score
+  }
+  # Start with intercept-only model
+  selected <- character(0)
+  current_score <- evaluate(selected)
+  repeat {
+    remaining <- setdiff(predictors, selected)
+    # Candidate additions
+    add_models <- lapply(remaining, function(v) c(selected, v))
+    # Candidate removals
+    remove_models <- lapply(selected, function(v) setdiff(selected, v))
+    candidates <- c(add_models, remove_models)
+    if (length(candidates) == 0) break
+    scores <- vapply(candidates, evaluate, numeric(1))
+    if (criterion == "Cp") {
+      best <- which.min(scores)
+      improved <- scores[best] < current_score - 1e-10
+    } else {
+      best <- which.max(scores)
+      improved <- scores[best] > current_score + 1e-10
+    }
+    if (!improved) break
+    selected <- candidates[[best]]
+    current_score <- scores[best]
+  }
+  final_model <- lm(reformulate(selected, response = "Y"), data = data)
+  list(model = final_model, selected = selected,
+       criterion_value = current_score)
+}
+```
+
+```{r q6-9}
+stepwise_Cp <- stepwise_custom(data = data, criterion = "Cp")
+summary(stepwise_Cp$model)
+formula(stepwise_Cp$model)
+# Selected predictors and final Cp
+stepwise_Cp$selected
+stepwise_Cp$criterion_value
+```
+
+## 6.10 Forward — Adjusted $R^2$
+
+`regsubsets()` builds a forward search path. `which.max()` chooses the model with the largest adjusted $R^2$ along that path.
+
+```{r q6-10}
+forward_adjR2 <- regsubsets(Y ~ ., data = data, nvmax = 15, method = "forward")
+results <- summary(forward_adjR2)
+# Choose the largest adjusted R-squared
+best_size <- which.max(results$adjr2)
+coef(forward_adjR2, id = best_size)
+results$adjr2[best_size]
+names(coef(forward_adjR2, id = best_size))[-1]
+```
+
+## 6.11 Backward — Adjusted $R^2$
+
+`regsubsets()` builds a backward search path. `which.max()` chooses the model with the largest adjusted $R^2$ along that path.
+
+```{r q6-11}
+backward_adjR2 <- regsubsets(Y ~ ., data = data, nvmax = 15, method = "backward")
+results <- summary(backward_adjR2)
+# Choose the largest adjusted R-squared
+best_size <- which.max(results$adjr2)
+coef(backward_adjR2, id = best_size)
+results$adjr2[best_size]
+names(coef(backward_adjR2, id = best_size))[-1]
+```
+
+## 6.12 Bidirectional stepwise — Adjusted $R^2$
+
+Reuse `stepwise_custom()` from 6.9, now maximizing adjusted $R^2$.
+
+```{r q6-12}
+stepwise_adjR2 <- stepwise_custom(data = data, criterion = "adjR2")
+summary(stepwise_adjR2$model)
+formula(stepwise_adjR2$model)
+# Selected predictors and final adjusted R-squared
+stepwise_adjR2$selected
+stepwise_adjR2$criterion_value
+```
+
+# Question 10: Choose LASSO $\lambda$ by Cross-Validation
+
+`glmnet` uses a numeric predictor matrix. With `alpha = 1`, the model is LASSO; `nfolds = 10` specifies ten-fold cross-validation, and `type.measure = "mse"` evaluates mean squared error. The seed makes the fold allocation reproducible.
+
+## Step 1. Prepare the data
+
+```{r q10-prepare}
+# Predictor matrix: X1 through X15
+X <- as.matrix(data[, paste0("X", 1:15)])
+# Response vector
+Y <- data$Y
+# Check dimensions
+dim(X)
+length(Y)
+```
+
+## Step 2. Run 10-fold cross-validation
+
+```{r q10-cv}
+set.seed(6166)
+cv_lasso <- cv.glmnet(x = X, y = Y, alpha = 1,
+  nfolds = 10, family = "gaussian", type.measure = "mse",
+  standardize = TRUE)
+# Display cross-validation results
+print(cv_lasso)
+```
+
+## Step 3. Plot cross-validation MSE
+
+`plot()` shows the cross-validation error curve. A second call saves the plot to a PDF in the working directory.
+
+```{r q10-plot}
+# Plot cross-validation MSE against lambda
+plot(cv_lasso)
+# Save plot as PDF
+pdf("Question10_LASSO_CV.pdf", width = 8, height = 6)
+plot(cv_lasso)
+dev.off()
+```
+
+## Step 4. Report `lambda.min`
+
+`lambda.min` is the penalty value giving the smallest cross-validation mean squared error.
+
+```{r q10-lambda}
+lambda_selected <- cv_lasso$lambda.min
+lambda_selected
+# Minimum cross-validation MSE
+min(cv_lasso$cvm)
+```
+
+# Question 11: Fit LASSO and Identify Variables
+
+Fit the LASSO model using the previously chosen `lambda.min`. Extract its coefficients and identify predictors with nonzero estimates; do not count the intercept.
+
+## Step 1. Fit LASSO using the selected $\lambda$
+
+```{r q11-fit}
+lasso_model <- glmnet(x = X, y = Y, alpha = 1,
+  lambda = lambda_selected, family = "gaussian",
+  standardize = TRUE)
+# Display fitted model
+print(lasso_model)
+```
+
+## Step 2. Extract the LASSO coefficient estimates
+
+```{r q11-coef}
+# Extract LASSO coefficients
+lasso_coef <- coef(lasso_model)
+print(lasso_coef)
+# Convert sparse coefficients into a data frame
+lasso_coef_df <- data.frame(
+  Coefficient = rownames(lasso_coef),
+  Estimate = as.numeric(lasso_coef)
+)
+print(lasso_coef_df)
+```
+
+## Step 3. Identify selected predictors
+
+```{r q11-selected}
+# Exclude intercept
+beta_lasso <- lasso_coef_df[-1, ]
+# Identify predictors with nonzero coefficients
+selected_predictors <- beta_lasso$Coefficient[
+  beta_lasso$Estimate != 0
+]
+print(selected_predictors)
+# Number of selected predictors
+length(selected_predictors)
+```
+
+## Step 4. Create and save the coefficient table
+
+Create a 15-row table for $\beta_1,\ldots,\beta_{15}$; a zero estimate means LASSO did not select that predictor. Save a CSV that students can copy into their report.
+
+```{r q11-table}
+lasso_table <- data.frame(
+  Coefficient = paste0("beta", 1:15),
+  LASSO_Point_Estimate = as.numeric(
+    lasso_coef[paste0("X", 1:15), 1]
+  )
+)
+print(lasso_table)
+# Optional: save as CSV
+write.csv(lasso_table, "Question11_LASSO_Coefficients.csv",
+          row.names = FALSE)
+```
+
