@@ -251,8 +251,7 @@ stepwise_custom <- function(data, criterion = "Cp") {
     selected <- candidates[[best]]
     current_score <- scores[best]
   }
-  final_model <- lm(reformulate(if (length(selected) > 0) selected else "1",
-                                response = "Y"), data = data)
+  final_model <- lm(reformulate(selected, response = "Y"), data = data)
   list(model = final_model, selected = selected,
        criterion_value = current_score)
 }
